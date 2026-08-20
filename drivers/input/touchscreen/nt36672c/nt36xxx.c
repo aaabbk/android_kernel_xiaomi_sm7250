@@ -2064,7 +2064,7 @@ static char nvt_touch_vendor_read(void)
 	return value;
 }
 
-static char nvt_panel_vendor_read(void)
+static u8 nvt_panel_vendor_read(void)
 {
 	char value = '0';
 	int ret = 0;
@@ -2088,7 +2088,7 @@ static char nvt_panel_vendor_read(void)
 	return value;
 }
 
-static char nvt_panel_color_read(void)
+static u8 nvt_panel_color_read(void)
 {
 	char value = '0';
 	int ret = 0;
@@ -2109,7 +2109,7 @@ static char nvt_panel_color_read(void)
 	return value;
 }
 
-static char nvt_panel_display_read(void)
+static u8 nvt_panel_display_read(void)
 {
 	char value = '0';
 	int ret = 0;

@@ -11,6 +11,7 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+source "drivers/input/touchscreen/xiaomi/Kconfig"
 source "drivers/input/touchscreen/nt36672c/Kconfig"
 
 config SECURE_TOUCH
@@ -1382,5 +1383,4 @@ config TOUCHSCREEN_SYNAPTICS_TCM
 
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
 source "drivers/input/touchscreen/nt36xxx/Kconfig"
-
 endif
