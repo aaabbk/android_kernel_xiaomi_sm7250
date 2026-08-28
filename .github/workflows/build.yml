@@ -24,8 +24,17 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev \
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev \
             libncurses-dev ccache zip wget git
+
+      - name: Create 10G swap
+        run: |
+          sudo swapoff -a || true
+          sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240 status=progress
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -36,32 +45,23 @@ jobs:
             ccache-${{ github.ref_name }}-
             ccache-
 
-      - name: Download LLVM 19.1.0 (Clang)
+      - name: Download AOSP Clang (r416183b)
         run: |
-          wget -q --show-progress https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/LLVM-19.1.0-Linux-X64.tar.xz
-          mkdir -p toolchains/clang tmp_clang
-          tar -C tmp_clang -xJf LLVM-19.1.0-Linux-X64.tar.xz
-          # Handle both "top-level dir" and "flat layout" tarballs
-          if [ "$(ls tmp_clang | wc -l)" = "1" ] && [ -d "tmp_clang/$(ls tmp_clang)" ]; then
-            mv tmp_clang/*/* toolchains/clang/
-          else
-            mv tmp_clang/* toolchains/clang/
-          fi
-          rm -rf tmp_clang LLVM-19.1.0-Linux-X64.tar.xz
+          mkdir -p toolchains/clang
+          wget -q --show-progress https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/r416183b.tar.gz -O clang.tar.gz
+          tar -xzf clang.tar.gz -C toolchains/clang
+          rm -f clang.tar.gz
           toolchains/clang/bin/clang --version | head -3
 
-      - name: Download Google GCC 4.9 (gcc-64 and gcc-32)
+      - name: Download GCC 4.9 (aarch64 and arm)
         run: |
-          # gcc-64 (aarch64-linux-android): backup of Google GCC Android 4.9
-          git clone --depth=1 https://github.com/JackA1ltman/Google-GCC-Android-4.9 toolchains/gcc/aarch64
-          # gcc-32 (arm-linux-androideabi): source not listed in the notes, use LineageOS backup
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 toolchains/gcc/aarch64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchains/gcc/arm
           toolchains/gcc/aarch64/bin/aarch64-linux-android-gcc --version | head -2
 
       - name: Generate defconfig
         run: |
           export PATH=$PWD/toolchains/clang/bin:$PATH
-          export O=out
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=$PWD/toolchains/gcc/aarch64/bin/aarch64-linux-android-
@@ -73,7 +73,6 @@ jobs:
       - name: Build kernel
         run: |
           export PATH=$PWD/toolchains/clang/bin:$PATH
-          export O=out
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=$PWD/toolchains/gcc/aarch64/bin/aarch64-linux-android-
