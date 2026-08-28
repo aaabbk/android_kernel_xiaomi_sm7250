@@ -7,6 +7,15 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      packaging:
+        description: '打包方式: ak3 (AnyKernel3 刷机包) 或 files (散文件)'
+        required: false
+        default: 'ak3'
+        type: choice
+        options:
+          - ak3
+          - files
 
 permissions:
   contents: read
@@ -25,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev \
-            libncurses-dev ccache zip wget git
+            libncurses-dev ccache zip unzip wget git
 
       - name: Create 10G swap
         run: |
@@ -83,20 +92,46 @@ jobs:
 
       - name: Package kernel
         run: |
-          mkdir -p release
+          set -e
+          PACK="${{ github.event.inputs.packaging || 'ak3' }}"
+          echo "Packaging mode: $PACK"
+          mkdir -p release/modules
+          # 只保留内核镜像
           [ -f out/arch/arm64/boot/Image.gz ] && cp out/arch/arm64/boot/Image.gz release/ || true
           [ -f out/arch/arm64/boot/Image ] && cp out/arch/arm64/boot/Image release/ || true
-          # Device tree blobs
-          find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} release/ \; 2>/dev/null || true
-          # Kernel modules
-          find out -name "*.ko" -exec cp {} release/ \; 2>/dev/null || true
+          # 内核模块单独放 modules/，不混在根目录
+          find out -name "*.ko" -exec cp {} release/modules/ \; 2>/dev/null || true
+          echo "=== release/ ==="
           ls -la release/
-          cd release && zip -r ../kernel-picasso-stock.zip .
-          ls -lh ../kernel-picasso-stock.zip
+          echo "=== release/modules/ ==="
+          ls -la release/modules/
+          if [ "$PACK" = "ak3" ]; then
+            echo "Building AnyKernel3 flashable zip..."
+            git clone --depth=1 https://github.com/osm0sis/AnyKernel3 ak3
+            # 只放内核镜像 (GKI 1.0 / picasso)
+            cp out/arch/arm64/boot/Image ak3/Image
+            cat > ak3/anykernel.sh <<'EOF'
+#!/sbin/sh
+# AnyKernel3 - picasso (Redmi K30 Pro / POCO F2 Pro, sm7250/lito, GKI 1.0)
+block=/dev/block/bootdevice/by-name/boot;
+is_slot_device=1;
+ramdisk_compression=auto;
+. ./tools/ak3-core.sh;
+split_boot;
+flash_boot;
+EOF
+            chmod +x ak3/anykernel.sh
+            rm -rf ak3/.git*
+            ( cd ak3 && zip -r9 ../AnyKernel3-picasso-stock.zip . )
+            ls -lh AnyKernel3-picasso-stock.zip
+          fi
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-picasso-stock
-          path: kernel-picasso-stock.zip
+          path: |
+            release/Image*
+            release/modules/
+            AnyKernel3-*.zip
           if-no-files-found: error
