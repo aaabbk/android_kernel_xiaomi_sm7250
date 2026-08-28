@@ -1,0 +1,102 @@
+name: Build Kernel
+
+on:
+  push:
+    branches:
+      - susfs-miui
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev \
+            libncurses-dev ccache zip wget git
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+            ccache-
+
+      - name: Download LLVM 19.1.0 (Clang)
+        run: |
+          wget -q --show-progress https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/LLVM-19.1.0-Linux-X64.tar.xz
+          mkdir -p toolchains/clang tmp_clang
+          tar -C tmp_clang -xJf LLVM-19.1.0-Linux-X64.tar.xz
+          # Handle both "top-level dir" and "flat layout" tarballs
+          if [ "$(ls tmp_clang | wc -l)" = "1" ] && [ -d "tmp_clang/$(ls tmp_clang)" ]; then
+            mv tmp_clang/*/* toolchains/clang/
+          else
+            mv tmp_clang/* toolchains/clang/
+          fi
+          rm -rf tmp_clang LLVM-19.1.0-Linux-X64.tar.xz
+          toolchains/clang/bin/clang --version | head -3
+
+      - name: Download Google GCC 4.9 (gcc-64 and gcc-32)
+        run: |
+          # gcc-64 (aarch64-linux-android): backup of Google GCC Android 4.9
+          git clone --depth=1 https://github.com/JackA1ltman/Google-GCC-Android-4.9 toolchains/gcc/aarch64
+          # gcc-32 (arm-linux-androideabi): source not listed in the notes, use LineageOS backup
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchains/gcc/arm
+          toolchains/gcc/aarch64/bin/aarch64-linux-android-gcc --version | head -2
+
+      - name: Generate defconfig
+        run: |
+          export PATH=$PWD/toolchains/clang/bin:$PATH
+          export O=out
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=$PWD/toolchains/gcc/aarch64/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$PWD/toolchains/gcc/arm/bin/arm-linux-androideabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CCACHE_DIR=/tmp/ccache
+          make CC="ccache clang" NM=llvm-nm OBJDUMP=llvm-objdump STRIP=llvm-strip picasso-stock_defconfig
+
+      - name: Build kernel
+        run: |
+          export PATH=$PWD/toolchains/clang/bin:$PATH
+          export O=out
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=$PWD/toolchains/gcc/aarch64/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$PWD/toolchains/gcc/arm/bin/arm-linux-androideabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CCACHE_DIR=/tmp/ccache
+          make -j$(nproc --all) CC="ccache clang" NM=llvm-nm OBJDUMP=llvm-objdump STRIP=llvm-strip
+
+      - name: Package kernel
+        run: |
+          mkdir -p release
+          [ -f out/arch/arm64/boot/Image.gz ] && cp out/arch/arm64/boot/Image.gz release/
+          [ -f out/arch/arm64/boot/Image ] && cp out/arch/arm64/boot/Image release/
+          # Device tree blobs
+          find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} release/ \; 2>/dev/null || true
+          # Kernel modules
+          find out -name "*.ko" -exec cp {} release/ \; 2>/dev/null || true
+          cd release && zip -r ../kernel-picasso-stock.zip *
+          ls -lh ../kernel-picasso-stock.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-picasso-stock
+          path: kernel-picasso-stock.zip
+          if-no-files-found: error
