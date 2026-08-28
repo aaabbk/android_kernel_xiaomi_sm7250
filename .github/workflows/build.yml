@@ -47,10 +47,8 @@ jobs:
 
       - name: Download AOSP Clang (r416183b)
         run: |
-          mkdir -p toolchains/clang
-          wget -q --show-progress https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/r416183b.tar.gz -O clang.tar.gz
-          tar -xzf clang.tar.gz -C toolchains/clang
-          rm -f clang.tar.gz
+          # googlesource.com no longer hosts r416183b on master; use crDroid's mirror
+          git clone --depth=1 -b 11.0 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r416183b toolchains/clang
           toolchains/clang/bin/clang --version | head -3
 
       - name: Download GCC 4.9 (aarch64 and arm)
