@@ -110,16 +110,16 @@ jobs:
             git clone --depth=1 https://github.com/osm0sis/AnyKernel3 ak3
             # 只放内核镜像 (GKI 1.0 / picasso)
             cp out/arch/arm64/boot/Image ak3/Image
-            cat > ak3/anykernel.sh <<'EOF'
-#!/sbin/sh
-# AnyKernel3 - picasso (Redmi K30 Pro / POCO F2 Pro, sm7250/lito, GKI 1.0)
-block=/dev/block/bootdevice/by-name/boot;
-is_slot_device=1;
-ramdisk_compression=auto;
-. ./tools/ak3-core.sh;
-split_boot;
-flash_boot;
-EOF
+            printf '%s\n' \
+              '#!/sbin/sh' \
+              '# AnyKernel3 - picasso (Redmi K30 Pro / POCO F2 Pro, sm7250/lito, GKI 1.0)' \
+              'block=/dev/block/bootdevice/by-name/boot;' \
+              'is_slot_device=1;' \
+              'ramdisk_compression=auto;' \
+              '. ./tools/ak3-core.sh;' \
+              'split_boot;' \
+              'flash_boot;' \
+              > ak3/anykernel.sh
             chmod +x ak3/anykernel.sh
             rm -rf ak3/.git*
             ( cd ak3 && zip -r9 ../AnyKernel3-picasso-stock.zip . )
