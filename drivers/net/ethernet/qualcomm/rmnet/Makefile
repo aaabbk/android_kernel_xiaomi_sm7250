@@ -1,6 +1,7 @@
 #
 # Makefile for the RMNET module
 #
+ccflags-y += -I$(src)
 
 CFLAGS_rmnet_handlers.o = -I$(src)
 
