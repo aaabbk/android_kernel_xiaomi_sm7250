@@ -381,6 +381,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		}
 		buffer[sizeof(buffer) - 1] = '\0';
 
+		/* Panic if init tries to reboot into fastboot or recovery */
+		if (!strcmp(buffer, "fastboot") || !strcmp(buffer, "recovery"))
+			panic("reboot into %s mode is not allowed\n", buffer);
+
 		kernel_restart(buffer);
 		break;
 
