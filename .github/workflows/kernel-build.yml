@@ -18,7 +18,7 @@ env:
   DEFCONFIG: picasso-stock_defconfig
   CLANG_VERSION: r416183b
   TC_DIR: ${{ github.workspace }}/toolchains
-  CCACHE_DIR: ${{ runner.temp }}/ccache
+  CCACHE_DIR: ${{ github.workspace }}/../ccache
   CCACHE_MAXSIZE: 1G
 
 jobs:
