@@ -1,0 +1,104 @@
+name: Kernel build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARCH: arm64
+  DEFCONFIG: picasso-stock_defconfig
+  CLANG_VERSION: r416183b
+  TC_DIR: ${{ github.workspace }}/toolchains
+
+jobs:
+  build:
+    name: Build ${{ github.ref_name }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex libssl-dev make zip unzip rsync
+
+      - name: Cache toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TC_DIR }}
+          key: toolchains-clang-${{ env.CLANG_VERSION }}-gcc4.9-v1
+
+      - name: Fetch toolchains
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$TC_DIR"
+
+          # AOSP clang r416183b, the version pinned by build.config.common
+          curl -fsSL -o /tmp/clang.tar.gz \
+            "https://codeload.github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b/tar.gz/refs/heads/lineage-20.0"
+          mkdir -p "$TC_DIR/clang"
+          tar -xzf /tmp/clang.tar.gz -C "$TC_DIR/clang" --strip-components=1
+          rm -f /tmp/clang.tar.gz
+
+          # Google GCC 4.9 for arm64 (binutils used for assembling/linking)
+          curl -fsSL -o /tmp/gcc64.tar.gz \
+            "https://codeload.github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9/tar.gz/refs/heads/lineage-19.1"
+          mkdir -p "$TC_DIR/gcc64"
+          tar -xzf /tmp/gcc64.tar.gz -C "$TC_DIR/gcc64" --strip-components=1
+          rm -f /tmp/gcc64.tar.gz
+
+      - name: Show toolchain versions
+        run: |
+          set -euo pipefail
+          "$TC_DIR/clang/bin/clang" --version
+          "$TC_DIR/gcc64/bin/aarch64-linux-android-ld" --version | head -1
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          export PATH="$TC_DIR/gcc64/bin:$TC_DIR/clang/bin:$PATH"
+          make O=out ARCH="$ARCH" \
+            CC=clang \
+            LLVM_IAS=0 \
+            CROSS_COMPILE="$TC_DIR/gcc64/bin/aarch64-linux-android-" \
+            HOSTCC=gcc HOSTCXX=g++ \
+            "$DEFCONFIG"
+
+      - name: Build kernel
+        run: |
+          set -euo pipefail
+          export PATH="$TC_DIR/gcc64/bin:$TC_DIR/clang/bin:$PATH"
+          make -j"$(nproc)" O=out ARCH="$ARCH" \
+            CC=clang \
+            LLVM_IAS=0 \
+            CROSS_COMPILE="$TC_DIR/gcc64/bin/aarch64-linux-android-" \
+            HOSTCC=gcc HOSTCXX=g++ \
+            KBUILD_BUILD_USER=github-actions \
+            KBUILD_BUILD_HOST=github-actions \
+            Image Image.gz
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ github.sha }}
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/Image.gz
+            out/System.map
+            out/.config
+          if-no-files-found: error
