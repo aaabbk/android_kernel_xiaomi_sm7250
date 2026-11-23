@@ -2,6 +2,8 @@ name: Kernel build
 
 on:
   push:
+    branches:
+      - ksu-miui-new
   workflow_dispatch:
 
 permissions:
@@ -16,6 +18,8 @@ env:
   DEFCONFIG: picasso-stock_defconfig
   CLANG_VERSION: r416183b
   TC_DIR: ${{ github.workspace }}/toolchains
+  CCACHE_DIR: ${{ runner.temp }}/ccache
+  CCACHE_MAXSIZE: 1G
 
 jobs:
   build:
@@ -33,7 +37,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bc bison flex libssl-dev make zip unzip rsync
+            bc bison flex libssl-dev make zip unzip rsync ccache
 
       - name: Cache toolchains
         id: cache-toolchains
@@ -62,18 +66,34 @@ jobs:
           tar -xzf /tmp/gcc64.tar.gz -C "$TC_DIR/gcc64" --strip-components=1
           rm -f /tmp/gcc64.tar.gz
 
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+
+      - name: Prepare ccache
+        run: |
+          set -euo pipefail
+          mkdir -p "$CCACHE_DIR"
+          ccache --max-size="$CCACHE_MAXSIZE"
+          ccache --zero-stats
+
       - name: Show toolchain versions
         run: |
           set -euo pipefail
           "$TC_DIR/clang/bin/clang" --version
           "$TC_DIR/gcc64/bin/aarch64-linux-android-ld" --version | head -1
+          ccache --version | head -1
 
       - name: Configure
         run: |
           set -euo pipefail
           export PATH="$TC_DIR/gcc64/bin:$TC_DIR/clang/bin:$PATH"
           make O=out ARCH="$ARCH" \
-            CC=clang \
+            CC="ccache clang" \
             LLVM_IAS=0 \
             CROSS_COMPILE="$TC_DIR/gcc64/bin/aarch64-linux-android-" \
             HOSTCC=gcc HOSTCXX=g++ \
@@ -84,13 +104,17 @@ jobs:
           set -euo pipefail
           export PATH="$TC_DIR/gcc64/bin:$TC_DIR/clang/bin:$PATH"
           make -j"$(nproc)" O=out ARCH="$ARCH" \
-            CC=clang \
+            CC="ccache clang" \
             LLVM_IAS=0 \
             CROSS_COMPILE="$TC_DIR/gcc64/bin/aarch64-linux-android-" \
             HOSTCC=gcc HOSTCXX=g++ \
             KBUILD_BUILD_USER=github-actions \
             KBUILD_BUILD_HOST=github-actions \
             Image Image.gz
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
