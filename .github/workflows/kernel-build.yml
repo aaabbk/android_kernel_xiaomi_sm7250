@@ -121,7 +121,7 @@ jobs:
             HOSTCC=gcc HOSTCXX=g++ \
             KBUILD_BUILD_USER=github-actions \
             KBUILD_BUILD_HOST=github-actions \
-            Image Image.gz
+            Image Image-dtb dtbo.img
 
       - name: ccache stats
         if: always()
@@ -133,7 +133,8 @@ jobs:
           name: kernel-${{ github.sha }}
           path: |
             out/arch/arm64/boot/Image
-            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image-dtb
+            out/arch/arm64/boot/dtbo.img
             out/System.map
             out/.config
           if-no-files-found: error
