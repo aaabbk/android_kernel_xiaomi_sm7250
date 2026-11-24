@@ -989,3 +989,29 @@
 &pm8008_9 {
 	status = "disabled";
 };
+
+/*
+ * pstore/ramoops: 4MB region right after the last bootloader reserved
+ * region (dfps_data_region ends at 0xa2400000) so that dmesg/panic
+ * records survive a reboot and can be read back through /proc/last_kmsg
+ * and /sys/fs/pstore.
+ */
+&reserved_memory {
+	ramoops_mem: ramoops_region@a2400000 {
+		compatible = "removed-dma-pool";
+		no-map;
+		reg = <0x0 0xa2400000 0x0 0x400000>;
+	};
+};
+
+/ {
+	ramoops: ramoops {
+		compatible = "ramoops";
+		memory-region = <&ramoops_mem>;
+		record-size = <0x40000>;
+		console-size = <0x100000>;
+		pmsg-size = <0x100000>;
+		ecc-size = <16>;
+		status = "ok";
+	};
+};
