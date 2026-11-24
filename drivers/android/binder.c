@@ -3264,7 +3264,8 @@ static void binder_transaction(struct binder_proc *proc,
 			data.mod.k_priv.binder.trans.dst_task = target_proc->tsk;
 			data.mod.k_priv.binder.trans.tf_oneway = tr->flags & TF_ONE_WAY;
 			data.mod.k_priv.binder.trans.code = tr->code;
-			millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
+			if (millet_binder_switch)
+				millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
 		}
 #endif
 	} else {
@@ -3333,7 +3334,8 @@ static void binder_transaction(struct binder_proc *proc,
 			data.mod.k_priv.binder.trans.dst_task = target_proc->tsk;
 			data.mod.k_priv.binder.trans.tf_oneway = tr->flags & TF_ONE_WAY;
 			data.mod.k_priv.binder.trans.code = tr->code;
-			millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
+			if (millet_binder_switch)
+				millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
 		}
 #endif
 
@@ -4471,7 +4473,8 @@ static int binder_wait_for_work(struct binder_thread *thread,
 			data.mod.k_priv.binder.trans.dst_task = target_proc->tsk;
 			data.mod.k_priv.binder.trans.tf_oneway = t->flags & TF_ONE_WAY;
 			data.mod.k_priv.binder.trans.code = t->code;
-			millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
+			if (millet_binder_switch)
+				millet_sendmsg(BINDER_TYPE, target_proc->tsk, &data);
 		}
 #endif
 		if (do_proc_work)
@@ -5876,6 +5879,8 @@ static enum BINDER_STAT query_binder_stats(struct binder_proc *proc)
 {
 	struct rb_node *n = NULL;
 	struct binder_thread *thread = NULL;
+	struct binder_work *w;
+	struct binder_transaction *btrans;
 	struct millet_data data;
 	struct task_struct *tsk;
 	int uid = 0;
@@ -5886,10 +5891,17 @@ static enum BINDER_STAT query_binder_stats(struct binder_proc *proc)
 
 	binder_inner_proc_lock(proc);
 	if (proc->tsk && !binder_worklist_empty_ilocked(&proc->todo)) {
-		data.mod.k_priv.binder.stat.task = proc->tsk;
-		data.mod.k_priv.binder.stat.pid = task_pid_nr(proc->tsk);
-		data.mod.k_priv.binder.stat.reason = BINDER_PROC_IN_BUSY;
-		goto busy;
+		list_for_each_entry(w, &proc->todo, entry) {
+			if (w->type != BINDER_WORK_TRANSACTION)
+				continue;
+			btrans = container_of(w, struct binder_transaction, work);
+			if (!btrans->need_reply)
+				continue;
+			data.mod.k_priv.binder.stat.task = proc->tsk;
+			data.mod.k_priv.binder.stat.pid = task_pid_nr(proc->tsk);
+			data.mod.k_priv.binder.stat.reason = BINDER_PROC_IN_BUSY;
+			goto busy;
+		}
 	}
 
 	for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n)) {
@@ -5898,18 +5910,26 @@ static enum BINDER_STAT query_binder_stats(struct binder_proc *proc)
 			continue;
 
 		if (!binder_worklist_empty_ilocked(&thread->todo)) {
-			data.mod.k_priv.binder.stat.task = thread->task;
-			data.mod.k_priv.binder.stat.tid = thread->pid;
-			data.mod.k_priv.binder.stat.pid = task_tgid_nr(thread->task);
-			data.mod.k_priv.binder.stat.reason = BINDER_THREAD_IN_BUSY;
-			goto busy;
+			list_for_each_entry(w, &thread->todo, entry) {
+				if (w->type != BINDER_WORK_TRANSACTION)
+					continue;
+				btrans = container_of(w, struct binder_transaction, work);
+				if (!btrans->need_reply)
+					continue;
+				data.mod.k_priv.binder.stat.task = thread->task;
+				data.mod.k_priv.binder.stat.tid = thread->pid;
+				data.mod.k_priv.binder.stat.pid = task_tgid_nr(thread->task);
+				data.mod.k_priv.binder.stat.reason = BINDER_THREAD_IN_BUSY;
+				goto busy;
+			}
 		}
 
 		if (!thread->transaction_stack)
 			continue;
 
 		spin_lock(&thread->transaction_stack->lock);
-		if (thread->transaction_stack->to_thread == thread) {
+		if (thread->transaction_stack->to_thread == thread &&
+		    thread->transaction_stack->need_reply) {
 			data.mod.k_priv.binder.stat.task = thread->task;
 			data.mod.k_priv.binder.stat.tid = thread->pid;
 			data.mod.k_priv.binder.stat.pid = task_tgid_nr(thread->task);
@@ -5925,7 +5945,8 @@ static enum BINDER_STAT query_binder_stats(struct binder_proc *proc)
 busy:
 	tsk = data.mod.k_priv.binder.stat.task;
 	binder_inner_proc_unlock(proc);
-	millet_sendmsg(BINDER_ST_TYPE, tsk, &data);
+	if (millet_binder_switch)
+		millet_sendmsg(BINDER_ST_TYPE, tsk, &data);
 	return data.mod.k_priv.binder.stat.reason;
 }
 

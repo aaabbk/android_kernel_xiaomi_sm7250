@@ -354,6 +354,50 @@ static inline struct vm_area_struct *binder_alloc_get_vma(
 extern struct task_struct *binder_buff_owner(struct binder_alloc *alloc);
 #endif
 
+#ifdef CONFIG_MILLET
+/*
+ * Dump the async buffer usage when a oneway transaction is about to fail
+ * because the receiver ran out of async space. Rate limited to one dump
+ * every BUFFER_CHECK_INTERVAL_MS.
+ */
+static void millet_dump_async_space(struct binder_alloc *alloc, size_t size)
+{
+	struct binder_buffer *buffer;
+	size_t total_alloc_size = 0, num_buffers = 0;
+	size_t async_size = 0, async_num = 0;
+	static ktime_t last_dump;
+	ktime_t now = ktime_get();
+
+	if (ktime_ms_delta(now, last_dump) < BUFFER_CHECK_INTERVAL_MS)
+		return;
+	last_dump = now;
+
+	pr_info("millet: async txn from %d:%d to %d apply:%zu free:%zu, may fail!\n",
+		current->tgid, current->pid, alloc->pid, size,
+		alloc->free_async_space);
+	pr_info("millet: large buffers(>%dK):\n", LARGE_BUFFER_THRESHOLD >> 10);
+
+	list_for_each_entry(buffer, &alloc->buffers, entry) {
+		size_t buf_size = binder_alloc_buffer_size(alloc, buffer) +
+				  sizeof(struct binder_buffer);
+
+		total_alloc_size += buf_size;
+		num_buffers++;
+		if (buffer->async_transaction) {
+			async_size += buf_size;
+			async_num++;
+		}
+		if (buf_size < LARGE_BUFFER_THRESHOLD)
+			continue;
+		pr_info("millet:   buffer %p size:%zu pid:%d async:%d\n",
+			buffer, buf_size, buffer->pid,
+			buffer->async_transaction);
+	}
+	pr_info("millet: buffers:%zu total:%zu async buffers:%zu async total:%zu\n",
+		num_buffers, total_alloc_size, async_num, async_size);
+}
+#endif
+
 static bool debug_low_async_space_locked(struct binder_alloc *alloc, int pid)
 
 {
@@ -456,6 +500,7 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 		}
 
 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC, "%s", NAME_ARRAY[0]);
+		millet_dump_async_space(alloc, size);
 	}
 #endif
 

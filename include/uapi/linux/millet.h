@@ -54,6 +54,8 @@ static const char *NAME_ARRAY[NAME_MAXLEN] = {
 	"invalid",
 };
 
+#ifndef ENUM_BINDER_STAT
+#define ENUM_BINDER_STAT
 enum BINDER_STAT {
 	BINDER_IN_IDLE,
 	BINDER_IN_BUSY,
@@ -62,6 +64,7 @@ enum BINDER_STAT {
 	BINDER_IN_TRANSACTION,
 	BINDER_ST_NUM,
 };
+#endif
 
 enum BINDER_EXTRA_MSG {
 	BINDER_BUFF_WARN,
