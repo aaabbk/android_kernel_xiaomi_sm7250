@@ -99,6 +99,17 @@ jobs:
             HOSTCC=gcc HOSTCXX=g++ \
             "$DEFCONFIG"
 
+          # The stock defconfig alone is not buildable: device specific
+          # options such as CONFIG_CPUSET_ASSIST live in the vendor
+          # fragment, so merge it like the device build does.
+          cat arch/arm64/configs/vendor/xiaomi/picasso.config >> out/.config
+          make O=out ARCH="$ARCH" \
+            CC="ccache clang" \
+            LLVM_IAS=0 \
+            CROSS_COMPILE="$TC_DIR/gcc64/bin/aarch64-linux-android-" \
+            HOSTCC=gcc HOSTCXX=g++ \
+            olddefconfig
+
       - name: Build kernel
         run: |
           set -euo pipefail
