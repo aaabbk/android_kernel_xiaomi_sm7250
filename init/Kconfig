@@ -1156,6 +1156,24 @@ menuconfig NAMESPACES
 	  or same user id or pid may refer to different tasks when used in
 	  different namespaces.
 
+config KERNEL_RELEASE_OVERRIDE
+	string "Override the kernel release reported by uname(2)"
+	default ""
+	help
+	  Android's userspace BPF loaders (netbpfload, libnetd_updatable,
+	  bpfloader) pick which eBPF programs and cgroup hooks to use from
+	  the release string returned by uname(2). A kernel that has a
+	  backported 5.10 BPF feature set can set this to e.g. "5.10.199"
+	  so that Android 17 (API 37, which refuses to boot on kernels
+	  reporting less than 5.10) selects the 5.10 code paths instead of
+	  falling back to programs that no longer ship.
+
+	  Only the release string of the initial UTS namespace is
+	  overridden; linux_banner, /proc/version and the module vermagic
+	  keep the real version. Leave this empty to report UTS_RELEASE.
+
+	  The value must not be longer than 64 characters.
+
 if NAMESPACES
 
 config UTS_NS

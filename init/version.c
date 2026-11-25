@@ -14,6 +14,9 @@
 #include <generated/utsrelease.h>
 #include <linux/version.h>
 #include <linux/proc_ns.h>
+#include <linux/init.h>
+#include <linux/string.h>
+#include <linux/build_bug.h>
 
 #ifndef CONFIG_KALLSYMS
 #define version(a) Version_ ## a
@@ -21,6 +24,28 @@
 
 extern int version_string(LINUX_VERSION_CODE);
 int version_string(LINUX_VERSION_CODE);
+#endif
+
+/*
+ * Android's BPF loaders gate the set of eBPF programs they load on the
+ * release string returned by uname(2), so allow an opt-in override for
+ * kernels whose BPF support was backported to a level newer than the
+ * kernel version they report. Only the runtime UTS release is affected;
+ * the vermagic and /proc/version still use the real UTS_RELEASE.
+ */
+#ifdef CONFIG_KERNEL_RELEASE_OVERRIDE
+static int __init init_uts_release_override(void)
+{
+	BUILD_BUG_ON(sizeof(CONFIG_KERNEL_RELEASE_OVERRIDE) >
+		     sizeof(init_uts_ns.name.release));
+
+	if (CONFIG_KERNEL_RELEASE_OVERRIDE[0])
+		strscpy(init_uts_ns.name.release,
+			CONFIG_KERNEL_RELEASE_OVERRIDE,
+			sizeof(init_uts_ns.name.release));
+	return 0;
+}
+early_initcall(init_uts_release_override);
 #endif
 
 struct uts_namespace init_uts_ns = {
