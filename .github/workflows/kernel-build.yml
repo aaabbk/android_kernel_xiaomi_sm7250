@@ -122,7 +122,27 @@ jobs:
             HOSTCC=gcc HOSTCXX=g++ \
             KBUILD_BUILD_USER=github-actions \
             KBUILD_BUILD_HOST=github-actions \
-            Image Image-dtb dtbo.img
+            Image dtbs dtbo.img
+
+      - name: Package AnyKernel3 zip
+        run: |
+          set -euo pipefail
+          AK3=ak3-build
+          rm -rf "$AK3"
+          cp -a ak3 "$AK3"
+
+          cp out/arch/arm64/boot/Image "$AK3/Image"
+          # The boot image carries the platform dtbs appended to the kernel;
+          # ship the same set separately so AnyKernel3 repacks Image + dtb.
+          find out/arch/arm64/boot/dts -name '*.dtb' -print0 | xargs -0 cat > "$AK3/dtb"
+          cp out/arch/arm64/boot/dtbo.img "$AK3/dtbo.img"
+
+          test -s "$AK3/Image"
+          test -s "$AK3/dtb"
+          test -s "$AK3/dtbo.img"
+          python3 -c "import sys; sys.exit(0 if open('ak3-build/dtb','rb').read(4) == b'\xd0\x0d\xfe\xed' else 1)"
+
+          ( cd "$AK3" && zip -r9 "../picasso-ak3-${GITHUB_SHA::7}.zip" . )
 
       - name: ccache stats
         if: always()
@@ -133,8 +153,9 @@ jobs:
         with:
           name: kernel-${{ github.sha }}
           path: |
+            picasso-ak3-*.zip
             out/arch/arm64/boot/Image
-            out/arch/arm64/boot/Image-dtb
+            ak3-build/dtb
             out/arch/arm64/boot/dtbo.img
             out/System.map
             out/.config
